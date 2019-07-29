@@ -53,15 +53,25 @@ let projectPathOption = StringOption(
     helpMessage: "Root path of your Xcode project. Default is current folder.")
 cli.addOption(projectPathOption)
 
-let isForceOption = BoolOption(
-    longFlag: "force",
+let isDeleteOption = BoolOption(
+    longFlag: "delete",
     helpMessage: "Delete the found unused files without asking.")
-cli.addOption(isForceOption)
+cli.addOption(isDeleteOption)
+
+let isListOption = BoolOption(
+    longFlag: "list",
+    helpMessage: "List the found unused files.")
+cli.addOption(isListOption)
 
 let excludePathOption = MultiStringOption(
     shortFlag: "e", longFlag: "exclude",
     helpMessage: "Exclude paths from search.")
 cli.addOption(excludePathOption)
+
+let excludePrefixOption = MultiStringOption(
+    longFlag: "exclude-prefix",
+    helpMessage: "Exclude prefix images from search.")
+cli.addOption(excludePrefixOption)
 
 let resourceExtOption = MultiStringOption(
     shortFlag: "r", longFlag: "resource-extensions",
@@ -111,8 +121,10 @@ if versionOption.value {
 
 
 let projectPath = projectPathOption.value ?? "."
-let isForce = isForceOption.value
+let isDelete = isDeleteOption.value
+let isList = isListOption.value
 let excludePaths = excludePathOption.value ?? []
+let excludePrefixs = excludePrefixOption.value ?? []
 let resourceExtentions = resourceExtOption.value ?? ["imageset", "jpg", "png", "gif"]
 let fileExtensions = fileExtOption.value ?? ["h", "m", "mm", "swift", "xib", "storyboard", "plist"]
 
@@ -124,7 +136,14 @@ let fengNiao = FengNiao(projectPath: projectPath,
 let unusedFiles: [FileInfo]
 do {
     print("Searching unused file. This may take a while...")
-    unusedFiles = try fengNiao.unusedFiles()
+    unusedFiles = try fengNiao.unusedFiles().filter { file in
+        for prefix in excludePrefixs {
+            if file.fileName.hasPrefix(prefix) {
+                return false
+            }
+        }
+        return true
+    }
 } catch {
     guard let e = error as? FengNiaoError else {
         print("Unknown Error: \(error)".red.bold)
@@ -144,7 +163,16 @@ if unusedFiles.isEmpty {
     exit(EX_OK)
 }
 
-if !isForce {
+if isList {
+    let size = unusedFiles.reduce(0) { $0 + $1.size }.fn_readableSize
+    print("\(unusedFiles.count) unused files are found. Total Size: \(size)".yellow.bold)
+    for file in unusedFiles.sorted(by: { $0.size > $1.size }) {
+        print("\(file.readableSize) \(file.path.string)")
+    }
+    exit(EX_OK)
+}
+
+if !isDelete {
     var result = promptResult(files: unusedFiles)
     while result == .list {
         for file in unusedFiles.sorted(by: { $0.size > $1.size }) {
